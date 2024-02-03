@@ -1,36 +1,22 @@
-// SPDX-License-Identifier: GPL-3.0-only
-
 //#ifdef USE_ESP32 #TODO: remove
 
 #include "esphome/core/log.h"
 
-#include "esphome/core/automation.h"
-#include "esphome/core/component.h"
-#include "esphome/core/entity_base.h"
-#include "esphome/core/helpers.h"
-
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
-
-#include <string>
-
-#include <stdio.h>
-#include <stdbool.h>
-
-#include <unistd.h>
 
 #include "usb/usb_host.h"
 #include "usb/hid_host.h"
 #include "usb/hid_usage_keyboard.h"
 
-#include "usb_barcode_scanner.h"
+#include "Scanner.h"
 
 
 namespace esphome {
 namespace usb_barcode_scanner {
 
 
-static const char *const TAG = "usb-barcode-scanner";
+static const char *const TAG = "Scanner";
 
 QueueHandle_t event_queue = NULL;
 QueueHandle_t line_queue = NULL;
@@ -244,11 +230,11 @@ void hid_host_device_callback(hid_host_device_handle_t hid_device_handle, const 
     }
 }
 
-void USBBarcodeScanner::setup() {
+Scanner::Scanner() {
     BaseType_t task_created = xTaskCreatePinnedToCore(usb_lib_task, "usb_events", 4096, xTaskGetCurrentTaskHandle(), 2, NULL, 0);
     if (task_created != pdTRUE) {
         ESP_LOGE(TAG, "usb events lib task creation failed");
-        this->mark_failed();
+        exit(-2);
         return;
     }
 
@@ -267,8 +253,7 @@ void USBBarcodeScanner::setup() {
     esp_err_t err = hid_host_install(&hid_host_driver_config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "usb hid driver install failed: %s", esp_err_to_name(err));
-        this->init_error_ = err;
-        this->mark_failed();
+        exit(-2);
         return;
     }
 
@@ -276,20 +261,7 @@ void USBBarcodeScanner::setup() {
     line_queue = xQueueCreate(5, sizeof(line_t));
 }
 
-void USBBarcodeScanner::dump_config() {
-  ESP_LOGCONFIG(TAG, "USB Barcode Scanner:");
-  ESP_LOGCONFIG(TAG, "  Name: %s", this->name_.c_str());
-  //ESP_LOGCONFIG(TAG, "  Update interval: %u", this->max_update_interval_);
-  //ESP_LOGCONFIG(TAG, "  Idle interval: %u", this->idle_update_interval_);
-  //ESP_LOGCONFIG(TAG, "  Drop frame size: %u", s_drop_frame_size);
-
-  if (this->is_failed()) {
-    ESP_LOGE(TAG, "  Setup Failed: %s", esp_err_to_name(this->init_error_));
-    return;
-  }
-}
-
-void USBBarcodeScanner::loop() {
+optional<std::string> Scanner::barcode() {
     event_queue_t evt_queue = {};
     if (xQueueReceive(event_queue, &evt_queue, 0)) {
         hid_host_device_event(evt_queue.handle, evt_queue.event, evt_queue.arg);
@@ -297,55 +269,11 @@ void USBBarcodeScanner::loop() {
 
     line_t line;
     if (xQueueReceive(line_queue, &line, 0)) {
-        ESP_LOGI(TAG, "Barcode: %s", line);
-        std::string answer = openFoodFacts.getNameFromBarcode(std::string( reinterpret_cast<char*>(line)));
-        ESP_LOGI(TAG, "Name: %s", answer.c_str());
+        return make_optional(std::string(reinterpret_cast<char*>(line)));
     }
-}
 
-float USBBarcodeScanner::get_setup_priority() const { return setup_priority::AFTER_CONNECTION; }
-
-/* ---------------- setters ---------------- */
-/*
-// set image parameters
-void ESP32Camera::set_frame_size(ESP32CameraFrameSize size) {
-  this->frame_size = size;
+    return optional<std::string>();
 }
-void ESP32Camera::set_drop_size(uint32_t drop_size) {
-  s_drop_frame_size = drop_size;
-}
-//set fps 
-void ESP32Camera::set_max_update_interval(uint32_t max_update_interval) {
-  this->max_update_interval_ = max_update_interval;
-}
-void ESP32Camera::set_idle_update_interval(uint32_t idle_update_interval) {
-  this->idle_update_interval_ = idle_update_interval;
-}
-*/
-
-/* ---------------- public API (specific) ---------------- */
-/*
-void ESP32Camera::add_image_callback(std::function<void(std::shared_ptr<CameraImage>)> &&f) {
-  this->new_image_callback_.add(std::move(f));
-}
-void ESP32Camera::add_stream_start_callback(std::function<void()> &&callback) {
-  this->stream_start_callback_.add(std::move(callback));
-}
-void ESP32Camera::add_stream_stop_callback(std::function<void()> &&callback) {
-  this->stream_stop_callback_.add(std::move(callback));
-}
-void ESP32Camera::start_stream(CameraRequester requester) {
-  this->stream_start_callback_.call();
-  this->stream_requesters_ |= (1U << requester);
-}
-void ESP32Camera::stop_stream(CameraRequester requester) {
-  this->stream_stop_callback_.call();
-  this->stream_requesters_ &= ~(1U << requester);
-}
-void ESP32Camera::request_image(CameraRequester requester) { this->single_requesters_ |= (1U << requester); }
-void ESP32Camera::update_camera_parameters() {
-}
-*/
 
 }  // namespace usb_barcode_scanner
 }  // namespace esphome
