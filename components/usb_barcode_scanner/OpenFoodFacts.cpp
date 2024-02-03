@@ -1,28 +1,12 @@
-#include <string>
+#include <algorithm>
 
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_log.h"
-#include "esp_system.h"
-
-
-
-
-#include "esp_event.h"
-#include "esp_netif.h"
 #include "esp_tls.h"
-#include "nvs_flash.h"
-#include <cctype>
-#include <cstdlib>
-#include <cstring>
-#include <sys/param.h>
 #include "esp_crt_bundle.h"
 
 #include "cJSON.h"
-
 
 #include "OpenFoodFacts.h"
 
@@ -40,7 +24,7 @@ namespace usb_barcode_scanner{
             bytes_read = 0;
         }
         if (evt->event_id == HTTP_EVENT_ON_DATA) {
-            int copy_len = MIN(evt->data_len, (HTTP_OUTPUT_BUFFER - bytes_read));
+            int copy_len = std::min(evt->data_len, (HTTP_OUTPUT_BUFFER - bytes_read));
             if (copy_len) {
                 memcpy(((char*)evt->user_data) + bytes_read, evt->data, copy_len);
                 ((char*)evt->user_data)[bytes_read + copy_len + 1] = 0;
@@ -64,7 +48,8 @@ namespace usb_barcode_scanner{
     }
 
     OpenFoodFacts::OpenFoodFacts() {
-        receive_buffer = new char[HTTP_OUTPUT_BUFFER + 1];
+        this->region = "de";
+        this->receive_buffer = new char[HTTP_OUTPUT_BUFFER + 1];
         if (receive_buffer == nullptr) {
             ESP_LOGE(TAG, "Failed to allocate memory for buffer");
             ESP_LOGE(TAG, "Available heap: %" PRIu32, esp_get_free_heap_size());
@@ -86,17 +71,16 @@ namespace usb_barcode_scanner{
         config.url = "https://de.openfoodfacts.org/api/v3/product/";
         
         
-        client = esp_http_client_init(&config);
+        this->client = esp_http_client_init(&config);
     }
 
     OpenFoodFacts::~OpenFoodFacts() {
         esp_http_client_cleanup(client);
-        delete[] receive_buffer;
+        delete[] this->receive_buffer;
     }
 
     std::string OpenFoodFacts::getNameFromBarcode(std::string barcode) {
-        std::string bc = "4047247424301";
-        esp_http_client_set_url(client, ("https://de.openfoodfacts.org/api/v3/product/" + bc + ".json?fields=product_name,brands,abbreviated_product_name").c_str());
+        esp_http_client_set_url(client, ("https://" + this->region + ".openfoodfacts.org/api/v3/product/" + barcode + ".json?fields=product_name,brands,abbreviated_product_name").c_str());
 
         esp_err_t err = esp_http_client_perform(client);
         if (err != ESP_OK) {
@@ -129,6 +113,10 @@ namespace usb_barcode_scanner{
                         sub_name=answer['product']['brands'],
                         url=OpenFoodFacts.url(barcode))
         */
+    }
+
+    void OpenFoodFacts::set_region(std::string region) {
+        this->region = region;
     }
 }
 }
