@@ -2,8 +2,6 @@
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome import automation
-from esphome import pins
 from esphome.const import (
     CONF_FREQUENCY,
     CONF_ID,
@@ -17,13 +15,10 @@ from esphome.cpp_helpers import setup_entity
 
 
 usb_barcode_scanner_ns = cg.esphome_ns.namespace('usb_barcode_scanner')
-ESP32Camera = usb_barcode_scanner_ns.class_('ESP32Camera', cg.Component)
-OpenFoodFacts = usb_barcode_scanner_ns.class_('OpenFoodFacts', cg.Component)
+USBBarcodeScanner = usb_barcode_scanner_ns.class_('USBBarcodeScanner', cg.Component)
 
-
-DEPENDENCIES = ["esp32"]
-
-# AUTO_LOAD = ["esp32_camera"]
+DEPENDENCIES = ["esp32", "network"]
+AUTO_LOAD = ["json"]
 
 # frames
 CONF_MAX_FRAMERATE = "max_framerate"
@@ -32,7 +27,7 @@ CONF_DROP_FRAME_SIZE = "drop_frame_size"
 
 CONFIG_SCHEMA = cv.ENTITY_BASE_SCHEMA.extend(
     {
-        cv.GenerateID(): cv.declare_id(ESP32Camera),
+        cv.GenerateID(): cv.declare_id(USBBarcodeScanner),
         cv.Optional(CONF_MAX_FRAMERATE, default="5 fps"): cv.All(
             cv.framerate, cv.Range(min=0, min_included=False, max=60)
         ),
@@ -70,8 +65,6 @@ async def to_code(config):
     )
     
     for d, v in {
-        #"CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT": True,
-        #"CONFIG_RTCIO_SUPPORT_RTC_GPIO_DESC": True,
         "CONFIG_USB_OTG_SUPPORTED": True,
         "CONFIG_SOC_USB_OTG_SUPPORTED": True,
         "CONFIG_SOC_USB_PERIPH_NUM": True,
@@ -89,38 +82,6 @@ async def to_code(config):
         "CONFIG_USB_HOST_RESET_HOLD_MS": 30,
         "CONFIG_USB_HOST_RESET_RECOVERY_MS": 30,
         "CONFIG_USB_HOST_SET_ADDR_RECOVERY_MS": 10,
-
-        #"CONFIG_SPIRAM_USE_MALLOC": True, # buffers are big, better let everyone allocate PSRAM
-        #
-        # USB Stream
-        #
-        #"CONFIG_USB_STREAM_QUICK_START": True,
-       # "CONFIG_UVC_GET_DEVICE_DESC": True,
-       # "CONFIG_UVC_GET_CONFIG_DESC": True,
-       # "CONFIG_UVC_PRINT_DESC": True,
-       # "CONFIG_USB_PRE_ALLOC_CTRL_TRANSFER_URB": True,
-       # "CONFIG_USB_PROC_TASK_PRIORITY": 2,
-        #"CONFIG_USB_PROC_TASK_CORE": 1,
-       # "CONFIG_USB_PROC_TASK_STACK_SIZE": 3072,
-       # "CONFIG_USB_WAITING_AFTER_CONN_MS": 50,
-       # "CONFIG_USB_ENUM_FAILED_RETRY": True,
-       # "CONFIG_USB_ENUM_FAILED_RETRY_COUNT": 10,
-       # "CONFIG_USB_ENUM_FAILED_RETRY_DELAY_MS": 200,
-        #
-        # UVC Stream Config
-        #
-       # "CONFIG_SAMPLE_PROC_TASK_PRIORITY": 0,
-       # #"CONFIG_SAMPLE_PROC_TASK_CORE": 0,
-       # "CONFIG_SAMPLE_PROC_TASK_STACK_SIZE": 3072,
-       # "CONFIG_UVC_PRINT_PROBE_RESULT": True,
-       # "CONFIG_UVC_CHECK_BULK_JPEG_HEADER": True,
-       # "CONFIG_UVC_DROP_OVERFLOW_FRAME": True,
-       # "CONFIG_UVC_DROP_NO_EOF_FRAME": True,
-       # "CONFIG_NUM_BULK_STREAM_URBS": 2,
-       # "CONFIG_NUM_BULK_BYTES_PER_URB": 2048,
-       # "CONFIG_NUM_ISOC_UVC_URBS": 3,
-       # "CONFIG_NUM_PACKETS_PER_URB": 4,
-        # end of UVC Stream Config
     }.items():
         add_idf_sdkconfig_option(d, v)
 

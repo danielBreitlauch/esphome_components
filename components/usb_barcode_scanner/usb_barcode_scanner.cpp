@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// This file is derrived from esp32_camera component of ESPHome and from usb_camera_mic_spk example by Espressif
 
 //#ifdef USE_ESP32 #TODO: remove
 
@@ -9,27 +8,20 @@
 #include "esphome/core/component.h"
 #include "esphome/core/entity_base.h"
 #include "esphome/core/helpers.h"
+
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
+#include <string>
 
 #include <stdio.h>
 #include <stdbool.h>
-#include <string.h>
-#include <unistd.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
-#include "freertos/queue.h"
-#include "esp_err.h"
-#include "esp_log.h"
-#include "usb/usb_host.h"
-#include "errno.h"
-#include "driver/gpio.h"
 
+#include <unistd.h>
+
+#include "usb/usb_host.h"
 #include "usb/hid_host.h"
 #include "usb/hid_usage_keyboard.h"
-#include "usb/hid_usage_mouse.h"
 
 #include "usb_barcode_scanner.h"
 
@@ -151,7 +143,7 @@ static void hid_host_keyboard_report_callback(const uint8_t *const data, const i
                     if (KEYBOARD_ENTER_MAIN_CHAR == key_char) {
                         line[size++] = '\n';
                         if (line_queue) {
-                            xQueueSend(line_queue, &line, 0);
+                            xQueueSend(line_queue, line, 0);
                         }
                         size = 0;
                     }
@@ -252,45 +244,13 @@ void hid_host_device_callback(hid_host_device_handle_t hid_device_handle, const 
     }
 }
 
-/* ---------------- public API (derivated) ---------------- */
-void ESP32Camera::setup() {
-  esp_log_level_set(TAG, ESP_LOG_DEBUG);
-  //global_esp32_camera = this;
-
-  /* initialize time to now */
-  //this->last_update_ = esp_timer_get_time();
-
-  /* initialize camera */
-  //esp_err_t err = esp_camera_init(this->frame_size, 1000/this->max_update_interval_); // mui=1000/fps. error starts with 60 fps but it is unrealistic already
-  //if (err != ESP_OK) {
-  //  ESP_LOGE(TAG, "esp_camera_init failed: %s", esp_err_to_name(err));
-  //  this->init_error_ = err;
-  //  this->mark_failed();
-  //  return;
-  //}
-
-  /* initialize camera parameters */
-  //this->update_camera_parameters();
-
-  /* initialize RTOS */
-  //this->framebuffer_get_queue_ = xQueueCreate(1, sizeof(camera_fb_t *));
-  //this->framebuffer_return_queue_ = xQueueCreate(1, sizeof(camera_fb_t *));
-  //xTaskCreate(&ESP32Camera::framebuffer_task,
-  //                        "framebuffer_task",  // name
-  //                        512,                 // stack size
-  //                        nullptr,             // task pv params
-  //                        2,                   // priority
-  //                        nullptr              // handle
-  //);
-
-
-
-    BaseType_t task_created = xTaskCreatePinnedToCore(usb_lib_task,
-                                           "usb_events",
-                                           4096,
-                                           xTaskGetCurrentTaskHandle(),
-                                           2, NULL, 0);
-    assert(task_created == pdTRUE);
+void USBBarcodeScanner::setup() {
+    BaseType_t task_created = xTaskCreatePinnedToCore(usb_lib_task, "usb_events", 4096, xTaskGetCurrentTaskHandle(), 2, NULL, 0);
+    if (task_created != pdTRUE) {
+        ESP_LOGE(TAG, "usb events lib task creation failed");
+        this->mark_failed();
+        return;
+    }
 
     // Wait for notification from usb_lib_task to proceed
     ulTaskNotifyTake(false, 1000);
@@ -304,16 +264,20 @@ void ESP32Camera::setup() {
         .callback_arg = NULL
     };
 
-    ESP_ERROR_CHECK(hid_host_install(&hid_host_driver_config));
+    esp_err_t err = hid_host_install(&hid_host_driver_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "usb hid driver install failed: %s", esp_err_to_name(err));
+        this->init_error_ = err;
+        this->mark_failed();
+        return;
+    }
 
     event_queue = xQueueCreate(10, sizeof(event_queue_t));
     line_queue = xQueueCreate(5, sizeof(line_t));
-
-    ESP_LOGI(TAG, "Waiting for HID Device to be connected");
 }
 
-void ESP32Camera::dump_config() {
-  ESP_LOGCONFIG(TAG, "ESP32 USB Barcode Scanner:");
+void USBBarcodeScanner::dump_config() {
+  ESP_LOGCONFIG(TAG, "USB Barcode Scanner:");
   ESP_LOGCONFIG(TAG, "  Name: %s", this->name_.c_str());
   //ESP_LOGCONFIG(TAG, "  Update interval: %u", this->max_update_interval_);
   //ESP_LOGCONFIG(TAG, "  Idle interval: %u", this->idle_update_interval_);
@@ -325,28 +289,21 @@ void ESP32Camera::dump_config() {
   }
 }
 
-void ESP32Camera::loop() {
+void USBBarcodeScanner::loop() {
     event_queue_t evt_queue = {};
-    if (xQueueReceive(event_queue, &evt_queue, 10)) {
+    if (xQueueReceive(event_queue, &evt_queue, 0)) {
         hid_host_device_event(evt_queue.handle, evt_queue.event, evt_queue.arg);
     }
 
-    line_t line = { 0 };
-    if (xQueueReceive(line_queue, &line, 10)) {
+    line_t line;
+    if (xQueueReceive(line_queue, &line, 0)) {
         ESP_LOGI(TAG, "Barcode: %s", line);
-        unsigned char answer[1024] = { 0 };
-        openFoodFacts.getNameFromBarcode(line, answer);
-        ESP_LOGI(TAG, "Name: %s", answer);
+        std::string answer = openFoodFacts.getNameFromBarcode(std::string( reinterpret_cast<char*>(line)));
+        ESP_LOGI(TAG, "Name: %s", answer.c_str());
     }
 }
 
-float ESP32Camera::get_setup_priority() const { return setup_priority::AFTER_CONNECTION; }
-
-/* ---------------- constructors ---------------- */
-ESP32Camera::ESP32Camera() {
-  //frame_size = ESP32_CAMERA_SIZE_640X480;
-  //global_esp32_camera = this;
-}
+float USBBarcodeScanner::get_setup_priority() const { return setup_priority::AFTER_CONNECTION; }
 
 /* ---------------- setters ---------------- */
 /*
@@ -390,10 +347,7 @@ void ESP32Camera::update_camera_parameters() {
 }
 */
 
-
-//ESP32Camera *global_esp32_camera;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
-
-}  // namespace esp32_camera
+}  // namespace usb_barcode_scanner
 }  // namespace esphome
 
 //#endif

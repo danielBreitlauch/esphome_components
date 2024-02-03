@@ -8,24 +8,18 @@
 #include "esphome/core/component.h"
 #include "esphome/core/entity_base.h"
 #include "esphome/core/helpers.h"
-#include <freertos/FreeRTOS.h>
-#include <freertos/queue.h>
 
 #include "OpenFoodFacts.h"
 
 namespace esphome {
 namespace usb_barcode_scanner{
 
-class dummy : public Component {
- public:
-  void setup() override { }
-  float get_setup_priority() const override { return setup_priority::BUS; }
-};
-
-/* ---------------- ESP32Camera class ---------------- */
-class ESP32Camera : public Component, public EntityBase {
- public:
-  ESP32Camera();
+    class USBBarcodeScanner : public Component, public EntityBase {
+      protected:
+        esp_err_t init_error_ = ESP_OK;
+        OpenFoodFacts openFoodFacts;
+      public:
+        USBBarcodeScanner() {};
 
   /* setters */
   /* -- image */
@@ -35,11 +29,10 @@ class ESP32Camera : public Component, public EntityBase {
   //void set_max_update_interval(uint32_t max_update_interval);
   //void set_idle_update_interval(uint32_t idle_update_interval);
 
-  /* public API (derivated) */
-  void setup() override;
-  void loop() override;
-  void dump_config() override;
-  float get_setup_priority() const override;
+        void setup() override;
+        void loop() override;
+        void dump_config() override;
+        float get_setup_priority() const override;
   /* public API (specific) */
   /*void add_image_callback(std::function<void(std::shared_ptr<CameraImage>)> &&f);
   void start_stream(CameraRequester requester);
@@ -47,17 +40,9 @@ class ESP32Camera : public Component, public EntityBase {
   void request_image(CameraRequester requester);
   void update_camera_parameters();
 */
-
- protected:
-  //static void framebuffer_task(void *pv);
-  esp_err_t init_error_{ESP_OK};
-  OpenFoodFacts openFoodFacts;
 };
 
-// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
-//extern ESP32Camera *global_esp32_camera;
-
-}  // namespace usb_barcode
+}  // namespace usb_barcode_scanner
 }  // namespace esphome
 
 //#endif

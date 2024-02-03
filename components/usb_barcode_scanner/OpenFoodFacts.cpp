@@ -1,88 +1,134 @@
-#include <string.h>
-#include <stdlib.h>
+#include <string>
+
+#include "esphome/core/application.h"
+#include "esphome/core/log.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_system.h"
 
-#include "esp_http_client.h"
-#include "OpenFoodFacts.h"
 
-extern const char howsmyssl_com_root_cert_pem_start[] asm("_binary_howsmyssl_com_root_cert_pem_start");
-extern const char howsmyssl_com_root_cert_pem_end[]   asm("_binary_howsmyssl_com_root_cert_pem_end");
+
+
+#include "esp_event.h"
+#include "esp_netif.h"
+#include "esp_tls.h"
+#include "nvs_flash.h"
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
+#include <sys/param.h>
+#include "esp_crt_bundle.h"
+
+#include "cJSON.h"
+
+
+#include "OpenFoodFacts.h"
 
 namespace esphome {
 namespace usb_barcode_scanner{
 
-static const char *TAG = "OpenFoodFacts";
+    static const char *TAG = "OpenFoodFacts";
 
-esp_err_t _http_event_handler(esp_http_client_event_t *evt)
-{
-    switch(evt->event_id) {
-        case HTTP_EVENT_ERROR:
-            ESP_LOGD(TAG, "HTTP_EVENT_ERROR");
-            break;
-        case HTTP_EVENT_ON_CONNECTED:
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_CONNECTED");
-            break;
-        case HTTP_EVENT_HEADER_SENT:
-            ESP_LOGD(TAG, "HTTP_EVENT_HEADER_SENT");
-            break;
-        case HTTP_EVENT_ON_HEADER:
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
-            break;
-        case HTTP_EVENT_ON_DATA:
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
-            if (!esp_http_client_is_chunked_response(evt->client)) {
-                // Write out data
-                // printf("%.*s", evt->data_len, (char*)evt->data);
+    const int HTTP_OUTPUT_BUFFER = 4096;
+
+    esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
+        App.feed_wdt();
+        static int bytes_read = 0;
+        if (evt->event_id == HTTP_EVENT_ON_CONNECTED || evt->event_id == HTTP_EVENT_ON_FINISH) {
+            bytes_read = 0;
+        }
+        if (evt->event_id == HTTP_EVENT_ON_DATA) {
+            int copy_len = MIN(evt->data_len, (HTTP_OUTPUT_BUFFER - bytes_read));
+            if (copy_len) {
+                memcpy(((char*)evt->user_data) + bytes_read, evt->data, copy_len);
+                ((char*)evt->user_data)[bytes_read + copy_len + 1] = 0;
+                bytes_read += copy_len;
+            } 
+        }
+        if (evt->event_id == HTTP_EVENT_ERROR) {
+            ESP_LOGE(TAG, "HTTP_EVENT_ERROR");
+        }
+        if (evt->event_id == HTTP_EVENT_DISCONNECTED) {
+            ESP_LOGD(TAG, "DISCONNECT");
+            int mbedtls_err = 0;
+            esp_err_t err = esp_tls_get_and_clear_last_error((esp_tls_error_handle_t)evt->data, &mbedtls_err, NULL);
+            if (err != 0) {
+                ESP_LOGE(TAG, "Last esp error code: 0x%x", err);
+                ESP_LOGE(TAG, "Last mbedtls failure: 0x%x", mbedtls_err);
             }
-
-            break;
-        case HTTP_EVENT_ON_FINISH:
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_FINISH");
-            break;
-        case HTTP_EVENT_DISCONNECTED:
-            ESP_LOGD(TAG, "HTTP_EVENT_DISCONNECTED");
-            break;
+            bytes_read = 0;
+        }
+        return ESP_OK;
     }
-    return ESP_OK;
-}
 
-#define MAX_HTTP_RECV_BUFFER 512
+    OpenFoodFacts::OpenFoodFacts() {
+        receive_buffer = new char[HTTP_OUTPUT_BUFFER + 1];
+        if (receive_buffer == nullptr) {
+            ESP_LOGE(TAG, "Failed to allocate memory for buffer");
+            ESP_LOGE(TAG, "Available heap: %" PRIu32, esp_get_free_heap_size());
+            exit(-1);
+        }
 
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+        esp_http_client_config_t config = { nullptr };
+        #pragma GCC diagnostic pop
+        config.method = HTTP_METHOD_GET;
+        config.crt_bundle_attach = esp_crt_bundle_attach;
+        config.buffer_size = HTTP_OUTPUT_BUFFER;
+        config.user_data = receive_buffer;
+        config.event_handler = _http_event_handler;
+        config.skip_cert_common_name_check = true;
+        config.keep_alive_enable = true;
+        config.use_global_ca_store = true;
+        config.url = "https://de.openfoodfacts.org/api/v3/product/";
+        
+        
+        client = esp_http_client_init(&config);
+    }
 
-    // https://de.openfoodfacts.org/api/v3/product/4047247424301
+    OpenFoodFacts::~OpenFoodFacts() {
+        esp_http_client_cleanup(client);
+        delete[] receive_buffer;
+    }
 
-    /*
-    answer = self.api.product.get(barcode)
-            if answer['status_verbose'] != 'product found':
-                return None
-            
+    std::string OpenFoodFacts::getNameFromBarcode(std::string barcode) {
+        std::string bc = "4047247424301";
+        esp_http_client_set_url(client, ("https://de.openfoodfacts.org/api/v3/product/" + bc + ".json?fields=product_name,brands,abbreviated_product_name").c_str());
+
+        esp_err_t err = esp_http_client_perform(client);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
+            return "";
+        }
+        int status_code = esp_http_client_get_status_code(client);
+        if (status_code != HttpStatus_Ok) {
+            ESP_LOGE(TAG, "HTTP request status code: %d", status_code);
+            return "";
+        }
+
+        //ESP_LOGI(TAG, receive_buffer);
+
+        auto root = cJSON_Parse(receive_buffer);
+        auto result = cJSON_GetObjectItem(root, "result");
+        auto found = cJSON_GetObjectItem(result, "id")->valuestring;
+        if (strcmp("product_found", found) != 0) {
+            ESP_LOGE(TAG, "Barcode not found: %s", cJSON_Print(root));
+            return "";
+        }
+
+        auto product = cJSON_GetObjectItem(root, "product");
+        auto name = cJSON_GetObjectItem(product, "product_name")->valuestring;
+        auto brands = cJSON_GetObjectItem(product, "brands")->valuestring;
+        auto answer = std::string(name) + " (" + brands + ")";
+        return answer;   
+        /*
             return Item(name=answer['product']['product_name'],
                         sub_name=answer['product']['brands'],
                         url=OpenFoodFacts.url(barcode))
-    */
-
-    bool OpenFoodFacts::getNameFromBar code(unsigned char* barcode, unsigned char* answer) {
-        esp_http_client_config_t config = {
-            .url = "https://www.howsmyssl.com",
-            .event_handler = _http_event_handler,
-            .cert_pem = howsmyssl_com_root_cert_pem_start,
-        };
-        esp_http_client_handle_t client = esp_http_client_init(&config);
-        esp_err_t err = esp_http_client_perform(client);
-
-        if (err == ESP_OK) {
-            ESP_LOGI(TAG, "HTTPS Status = %d, content_length = %d",
-                esp_http_client_get_status_code(client),
-                esp_http_client_get_content_length(client));
-        } else {
-            ESP_LOGE(TAG, "Error perform http request %s", esp_err_to_name(err));
-        }
-        esp_http_client_cleanup(client);
-        return true;
+        */
     }
-
 }
 }
