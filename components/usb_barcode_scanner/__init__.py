@@ -18,7 +18,7 @@ usb_barcode_scanner_ns = cg.esphome_ns.namespace('usb_barcode_scanner')
 USBBarcodeScanner = usb_barcode_scanner_ns.class_('USBBarcodeScanner', cg.Component)
 
 DEPENDENCIES = ["esp32", "network"]
-AUTO_LOAD = ["json"]
+AUTO_LOAD = ["json", "psram"]
 
 # frames
 CONF_MAX_FRAMERATE = "max_framerate"
@@ -82,6 +82,8 @@ async def to_code(config):
         "CONFIG_USB_HOST_RESET_HOLD_MS": 30,
         "CONFIG_USB_HOST_RESET_RECOVERY_MS": 30,
         "CONFIG_USB_HOST_SET_ADDR_RECOVERY_MS": 10,
+
+        "CONFIG_SPIRAM_USE_MALLOC": True,
     }.items():
         add_idf_sdkconfig_option(d, v)
 
