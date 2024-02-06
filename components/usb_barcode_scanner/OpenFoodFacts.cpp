@@ -7,7 +7,6 @@
 #include "esp_crt_bundle.h"
 
 #include "cJSON.h"
-
 #include "OpenFoodFacts.h"
 
 namespace esphome {
@@ -27,7 +26,7 @@ namespace usb_barcode_scanner{
             int copy_len = std::min(evt->data_len, (HTTP_OUTPUT_BUFFER - bytes_read));
             if (copy_len) {
                 memcpy(((char*)evt->user_data) + bytes_read, evt->data, copy_len);
-                ((char*)evt->user_data)[bytes_read + copy_len + 1] = 0;
+                ((char*)evt->user_data)[bytes_read + copy_len] = 0;
                 bytes_read += copy_len;
             } 
         }
@@ -55,7 +54,13 @@ namespace usb_barcode_scanner{
             ESP_LOGE(TAG, "Available heap: %" PRIu32, esp_get_free_heap_size());
             exit(-1);
         }
+    }
 
+    OpenFoodFacts::~OpenFoodFacts() {
+        delete[] this->receive_buffer;
+    }
+
+    esp_http_client_handle_t OpenFoodFacts::initHttpClient() {
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
         esp_http_client_config_t config = { nullptr };
@@ -65,34 +70,34 @@ namespace usb_barcode_scanner{
         config.buffer_size = HTTP_OUTPUT_BUFFER;
         config.user_data = receive_buffer;
         config.event_handler = _http_event_handler;
-        config.skip_cert_common_name_check = true;
         config.keep_alive_enable = true;
-        config.use_global_ca_store = true;
+        config.timeout_ms=20000;
         config.url = "https://de.openfoodfacts.org/api/v3/product/";
-        
-        
-        this->client = esp_http_client_init(&config);
+        return esp_http_client_init(&config);
     }
 
-    OpenFoodFacts::~OpenFoodFacts() {
+    void OpenFoodFacts::cleanHttpClient(esp_http_client_handle_t client) {
         esp_http_client_cleanup(client);
-        delete[] this->receive_buffer;
     }
 
-    std::string OpenFoodFacts::getNameFromBarcode(std::string barcode) {
+    optional<ListItem> OpenFoodFacts::getListItemFromBarcode(std::string barcode) {
+        auto client = initHttpClient();
         esp_http_client_set_url(client, ("https://" + this->region + ".openfoodfacts.org/api/v3/product/" + barcode + ".json?fields=product_name,brands,abbreviated_product_name").c_str());
 
         esp_err_t err = esp_http_client_perform(client);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
-            return "";
+            cleanHttpClient(client);
+            return getListItemFromBarcode(barcode);
         }
         int status_code = esp_http_client_get_status_code(client);
         if (status_code != HttpStatus_Ok) {
             ESP_LOGE(TAG, "HTTP request status code: %d", status_code);
-            return "";
+            cleanHttpClient(client);
+            return optional<ListItem>();
         }
-
+        
+        cleanHttpClient(client);
         //ESP_LOGI(TAG, receive_buffer);
 
         auto root = cJSON_Parse(receive_buffer);
@@ -100,19 +105,13 @@ namespace usb_barcode_scanner{
         auto found = cJSON_GetObjectItem(result, "id")->valuestring;
         if (strcmp("product_found", found) != 0) {
             ESP_LOGE(TAG, "Barcode not found: %s", cJSON_Print(root));
-            return "";
+            return optional<ListItem>();
         }
 
         auto product = cJSON_GetObjectItem(root, "product");
         auto name = cJSON_GetObjectItem(product, "product_name")->valuestring;
         auto brands = cJSON_GetObjectItem(product, "brands")->valuestring;
-        auto answer = std::string(name) + " (" + brands + ")";
-        return answer;   
-        /*
-            return Item(name=answer['product']['product_name'],
-                        sub_name=answer['product']['brands'],
-                        url=OpenFoodFacts.url(barcode))
-        */
+        return ListItem(std::string(name) + " (" + std::string(brands) + ")");
     }
 
     void OpenFoodFacts::set_region(std::string region) {
