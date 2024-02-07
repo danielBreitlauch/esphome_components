@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <random>
 
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
@@ -7,6 +8,7 @@
 #include "esp_crt_bundle.h"
 
 #include "cJSON.h"
+#include "miniz.h"
 
 #include "Paprika3List.h"
 
@@ -39,7 +41,7 @@ namespace usb_barcode_scanner{
             int mbedtls_err = 0;
             esp_err_t err = esp_tls_get_and_clear_last_error((esp_tls_error_handle_t)evt->data, &mbedtls_err, NULL);
             if (err != 0) {
-                ESP_LOGE(TAG, "Last esp error code: 0x%x", err);
+                ESP_LOGE(TAG, "Last esp error code: 0x%x: %s", err, esp_err_to_name(err));
                 ESP_LOGE(TAG, "Last mbedtls failure: 0x%x", mbedtls_err);
             }
             bytes_read = 0;
@@ -48,194 +50,229 @@ namespace usb_barcode_scanner{
     }
 
     Paprika3List::Paprika3List() {
-        this->region = "de";
         this->receive_buffer = new char[HTTP_OUTPUT_BUFFER + 1];
         if (receive_buffer == nullptr) {
             ESP_LOGE(TAG, "Failed to allocate memory for buffer");
             ESP_LOGE(TAG, "Available heap: %" PRIu32, esp_get_free_heap_size());
             exit(-1);
         }
+    }
 
+    Paprika3List::~Paprika3List() {
+        delete[] this->receive_buffer;
+    }
+
+    esp_http_client_handle_t Paprika3List::initHttpClient() {
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
         esp_http_client_config_t config = { nullptr };
         #pragma GCC diagnostic pop
-        config.method = HTTP_METHOD_GET;
+        config.method = HTTP_METHOD_POST;
         config.crt_bundle_attach = esp_crt_bundle_attach;
         config.buffer_size = HTTP_OUTPUT_BUFFER;
         config.user_data = receive_buffer;
         config.event_handler = _http_event_handler2;
-        config.skip_cert_common_name_check = true;
+        config.timeout_ms=20000;
         config.keep_alive_enable = true;
-        config.use_global_ca_store = true;
         config.url = "https://de.openfoodfacts.org/api/v3/product/";
-        
-        
-        this->client = esp_http_client_init(&config);
+        return esp_http_client_init(&config);
     }
 
-    Paprika3List::~Paprika3List() {
+    void Paprika3List::cleanHttpClient(esp_http_client_handle_t client) {
         esp_http_client_cleanup(client);
-        delete[] this->receive_buffer;
     }
 
-    std::string Paprika3List::getNameFromBarcode(std::string barcode) {
-        esp_http_client_set_url(client, ("https://" + this->region + ".openfoodfacts.org/api/v3/product/" + barcode + ".json?fields=product_name,brands,abbreviated_product_name").c_str());
+    void Paprika3List::updateListItem(ListItem item) {
+        if (this->paprikaBearerToken.length() == 0) {
+            login();
+        }
+
+        auto perhapsItems = this->list();
+        if (!perhapsItems.has_value()) {
+            return;
+        }
+        auto items = *perhapsItems;
+        for (auto &listItem : items) {
+            if (item == listItem) {
+                ESP_LOGI(TAG, "found existing item: %s", listItem.name.c_str());
+                return;
+            }
+        }
+        this->createItem(item);
+    }
+
+    void Paprika3List::login() {
+        const std::string BOUNDARY = "__X_PAW_BOUNDARY__";
+        const std::string post_data = "--" + BOUNDARY + "\r\n" + 
+                                "Content-Disposition: form-data; name=\"email\"\r\n" +
+                                "\r\n" + this->email + 
+                                "\r\n--" + BOUNDARY + "\r\n" +
+                                "Content-Disposition: form-data; name=\"password\"\r\n" + 
+                                "\r\n" + this->password +
+                                "\r\n--" + BOUNDARY + "--\r\n";
+
+        auto client = initHttpClient();
+        esp_http_client_set_method(client, HTTP_METHOD_POST);
+        esp_http_client_set_url(client, (this->paprikaRestURL + "account/login/").c_str());
+        esp_http_client_set_post_field(client, post_data.c_str(), strlen(post_data.c_str()));
+        esp_http_client_set_header(client, "Content-Type", ("multipart/form-data; charset=utf-8; boundary=" + BOUNDARY).c_str());
 
         esp_err_t err = esp_http_client_perform(client);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
-            return "";
+            cleanHttpClient(client);
+            login();
+            return;
         }
         int status_code = esp_http_client_get_status_code(client);
         if (status_code != HttpStatus_Ok) {
-            ESP_LOGE(TAG, "HTTP request status code: %d", status_code);
-            return "";
+            ESP_LOGE(TAG, "Login failed. HTTP request status code: %d", status_code);
+            return;
         }
-
-        //ESP_LOGI(TAG, receive_buffer);
+        cleanHttpClient(client);
 
         auto root = cJSON_Parse(receive_buffer);
         auto result = cJSON_GetObjectItem(root, "result");
-        auto found = cJSON_GetObjectItem(result, "id")->valuestring;
-        if (strcmp("product_found", found) != 0) {
-            ESP_LOGE(TAG, "Barcode not found: %s", cJSON_Print(root));
-            return "";
-        }
-
-        auto product = cJSON_GetObjectItem(root, "product");
-        auto name = cJSON_GetObjectItem(product, "product_name")->valuestring;
-        auto brands = cJSON_GetObjectItem(product, "brands")->valuestring;
-        auto answer = std::string(name) + " (" + brands + ")";
-        return answer;   
-        /*
-            return Item(name=answer['product']['product_name'],
-                        sub_name=answer['product']['brands'],
-                        url=OpenFoodFacts.url(barcode))
-        */
+        this->paprikaBearerToken = cJSON_GetObjectItem(result, "token")->valuestring;
+        ESP_LOGI(TAG, "token: %s", this->paprikaBearerToken.c_str());
     }
 
-    void Paprika3List::set_region(std::string region) {
-        this->region = region;
+    optional<std::vector<ListItem>> Paprika3List::list() {
+        ESP_LOGD(TAG, "Perform List");
+        auto client = initHttpClient();
+        esp_http_client_set_method(client, HTTP_METHOD_GET);
+        esp_http_client_set_url(client, (this->paprikaRestURL + "sync/groceries/").c_str());
+        esp_http_client_set_header(client, "Content-Type", "application/json");
+        esp_http_client_set_header(client, "Authorization", ("Bearer " + this->paprikaBearerToken).c_str());
+
+        esp_err_t err = esp_http_client_perform(client);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
+            cleanHttpClient(client);
+            return list();
+        }
+        int status_code = esp_http_client_get_status_code(client);
+        if (status_code != HttpStatus_Ok) {
+            ESP_LOGE(TAG, "List failed. HTTP request status code: %d", status_code);
+            return optional<std::vector<ListItem>>();
+        }
+        
+        cleanHttpClient(client);
+        
+        auto root = cJSON_Parse(receive_buffer);
+        auto results = cJSON_GetObjectItem(root, "result");
+        if (!cJSON_IsArray(results)) {
+		    cJSON_Delete(root);
+            return optional<std::vector<ListItem>>();
+	    }
+        
+        auto list = std::vector<ListItem>();
+        cJSON *iterator = NULL;
+        cJSON_ArrayForEach(iterator, results) {
+            std::string listUID = cJSON_GetObjectItem(iterator, "list_uid")->valuestring;
+            if (listUID == this->listID) {
+                std::string uid = cJSON_GetObjectItem(iterator, "uid")->valuestring;
+                std::string name = cJSON_GetObjectItem(iterator, "name")->valuestring;
+			    ESP_LOGD(TAG, "uid: %s, name: %s", uid.c_str(), name.c_str());
+                list.emplace_back(uid, name);
+		    }
+	    }
+        cJSON_Delete(root);
+        ESP_LOGD(TAG, "Performed List well");
+        return list;
+    }
+
+    void Paprika3List::createItem(ListItem item) {
+        if (item.uid.length() == 0) {
+            ESP_LOGD(TAG, "Generate ID: %s", item.uid.c_str());
+            int range = 999999 - 100000;
+            item.uid = std::to_string(esp_random() % range + 100000);
+        }
+
+        cJSON *array = cJSON_CreateArray();
+        cJSON *object = cJSON_CreateObject();
+        cJSON_AddItemToArray(array, object);
+        cJSON_AddItemToObject(object, "uid", cJSON_CreateString(item.uid.c_str()));
+        cJSON_AddItemToObject(object, "quantity", cJSON_CreateString("1"));
+        cJSON_AddItemToObject(object, "list_uid", cJSON_CreateString(this->listID.c_str()));
+        cJSON_AddItemToObject(object, "name", cJSON_CreateString(item.name.c_str()));
+        cJSON_AddItemToObject(object, "order_flag", cJSON_CreateNumber(0));
+        cJSON_AddItemToObject(object, "purchased", cJSON_CreateBool(false));
+        
+        const char* post_data = cJSON_Print(array);
+        cJSON_Delete(array);
+        ESP_LOGI(TAG, "data: %s", post_data);
+
+        const mz_ulong original_length = strlen(post_data);
+        mz_ulong compressed_len = mz_compressBound(original_length);
+
+        auto zpkg = new unsigned char[compressed_len];
+        char gzipInit[10] = {0x1F,0x8B,8,0,0,0,0,0,0,0xFF};
+        memcpy(zpkg, gzipInit, 10);
+
+        if (int err = compress(zpkg + 10, &compressed_len, (unsigned char *)post_data, original_length) != MZ_OK) {
+            ESP_LOGE(TAG, "gzip failed, %d", err);
+            return;
+        }
+        int footerStart = (int)compressed_len + 10;
+        mz_ulong crc = mz_crc32(MZ_CRC32_INIT, (unsigned char *)post_data, original_length);
+        zpkg[footerStart] = crc & 0xFF;
+        zpkg[footerStart + 1] = (crc >> 8) & 0xFF;
+        zpkg[footerStart + 2] = (crc >> 16) & 0xFF;
+        zpkg[footerStart + 3] = (crc >> 24) & 0xFF;
+        zpkg[footerStart + 4] = original_length & 0xFF;
+        zpkg[footerStart + 5] = (original_length >> 8) & 0xFF;
+        zpkg[footerStart + 6] = (original_length >> 16) & 0xFF;
+        zpkg[footerStart + 7] = (original_length >> 24) & 0xFF;
+        compressed_len += 18;
+
+        std::string BOUNDARY = "ea48d9ece76ed1214889ad888a9b16e3";
+        const char* part1 = "--ea48d9ece76ed1214889ad888a9b16e3\r\nContent-Disposition: form-data; name=\"data\"; filename=\"data\"\r\n\r\n";
+        const char* part2 = "\r\n--ea48d9ece76ed1214889ad888a9b16e3--\r\n";
+
+        char part[strlen(part1) + compressed_len + strlen(part2)];
+        memcpy(part, part1, strlen(part1));
+        memcpy(part + strlen(part1), zpkg, compressed_len);
+        memcpy(part + strlen(part1) + compressed_len, part2, strlen(part2));
+
+        auto client = initHttpClient();
+        esp_http_client_set_method(client, HTTP_METHOD_POST);
+        esp_http_client_set_url(client, (this->paprikaRestURL + "sync/groceries").c_str());
+        esp_http_client_set_post_field(client, part, strlen(part1) + compressed_len + strlen(part2));
+        esp_http_client_set_header(client, "Authorization", ("Bearer " + this->paprikaBearerToken).c_str());
+        esp_http_client_set_header(client, "Accept-Encoding", "gzip, deflate");
+        esp_http_client_set_header(client, "Accept", "*/*");
+        esp_http_client_set_header(client, "Connection", "keep-alive");
+        esp_http_client_set_header(client, "User-Agent", "python-requests/2.31.0");
+        esp_http_client_set_header(client, "Content-Type", "multipart/form-data; boundary=ea48d9ece76ed1214889ad888a9b16e3");
+
+        esp_err_t err = esp_http_client_perform(client);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "HTTP POST ITEM failed: %s", esp_err_to_name(err));
+            delete[] zpkg;
+            cleanHttpClient(client);
+            return;
+        }
+        int status_code = esp_http_client_get_status_code(client);
+        ESP_LOGD(TAG, "Status code %d", status_code);
+        if (status_code != HttpStatus_Ok) {
+            ESP_LOGE(TAG, "Item creation failed. HTTP request status code: %d", status_code);
+            ESP_LOGE(TAG, "Item creation failed. HTTP response: %s", receive_buffer);
+        }
+        cleanHttpClient(client);
+        delete[] zpkg;
+    }
+
+    void Paprika3List::setEmail(std::string email) {
+        this->email = email;
+    }
+
+    void Paprika3List::setPassword(std::string password) {
+        this->password = password;
+    }
+
+    void Paprika3List::setListID(std::string listID) {
+        this->listID = listID;
     }
 }
 }
-
-/*
-
-paprika3_config = {
-    "email": "paprika@flying-stampe.de",
-    "password": "5ovXZ4zysc41",
-    "listID": "8708FA53-B32E-4809-9483-047DC13D4B81-5665-000004B5487830A8" # scans
-}
-
-
-class Paprika3List(ShopList):
-
-    paprikaRestURL = "https://www.paprikaapp.com/api/v2/"
-    paprikaBearerToken = ""
-    paprikaListUUID = ""
-
-    def __init__(self, config):
-        ShopList.__init__(self)
-        self.paprikaListUUID = config['listID']
-        self.login(config['email'], config['password'])
-
-    def is_meta_item(self, task):
-        return False
-
-    def list_tasks(self):
-        headers = {
-            'Content-Type': "application/json",
-            'Authorization': "Bearer %s" % self.paprikaBearerToken
-        }
-
-        items = get(self.paprikaRestURL + "sync/groceries/", headers=headers).json()
-        return [x for x in items['result'] if x['list_uid'] == self.paprikaListUUID]
-
-    def item_from_task(self, task, with_selects=True):
-        if 'quantity' in task and task['quantity'] is not None and is_int(task['quantity']):
-            amount = int(task['quantity'])
-        else:
-            amount = 1
-
-        name = task['name']
-        position = name.find(' ')
-        if position > 0:
-            possible_amount = name[0:position]
-            if is_int(possible_amount):
-                name = name[position + 1:]
-                amount = int(possible_amount)
-
-        if task['purchased']:
-            amount = 0
-
-        item = Item(name=name, amount=amount)
-        item.select_shop_item(ShopItem(task['uid'], amount, name, None, None, True))
-        return item
-
-    def create_item(self, item):
-        shop_item = item.selected_shop_item()
-        item_str = [
-            {
-                "uid": str(randrange(1000000)),
-                "order_flag": 0,
-                "purchased": False,
-                "quantity": str(item.amount),
-                "list_uid": self.paprikaListUUID,
-                "name": str(item.amount) + " " + item.name
-            }
-        ]
-        if shop_item and shop_item.article_id:
-            item_str[0]["uid"] = shop_item.article_id
-
-        files = {'data': self.gzip(json.dumps(item_str))}
-        post(self.paprikaRestURL + "sync/groceries", files=files, headers={
-            'Authorization': "Bearer %s" % self.paprikaBearerToken,
-        })
-
-    def update_item(self, task, item, rebuild_notes=False, rebuild_subs=False):
-        self.create_item(item)
-
-    
-    def gzip(self, content):
-        out = io.BytesIO()
-        with gzip.GzipFile(fileobj=out, mode='w') as fo:
-            fo.write(content.encode())
-        bytes_obj = out.getvalue()
-        return bytes_obj
-
-    def encode_multipart_formdata(self, fields):
-        boundary = "---011000010111000001101001"
-        body = (
-            "".join("--%s\r\n"
-                    "Content-Disposition: form-data; name=\"%s\"\r\n"
-                    "\r\n"
-                    "%s\r\n" % (boundary, field, value)
-                    for field, value in fields.items()) +
-            "--%s--\r\n" % boundary
-        )
-
-        content_type = "multipart/form-data; boundary=%s" % boundary
-        return body, content_type
-
-    def login(self, email, password):
-        body, content_type = self.encode_multipart_formdata({
-            'email': email,
-            'password': password
-        })
-
-        response = post(self.paprikaRestURL + "account/login/", data=body, headers={
-            'Content-Type': content_type
-        })
-
-        if response.status_code == 200:
-            json = response.json()
-            if json != "":
-                self.paprikaBearerToken = json['result']['token']
-                return
-
-        print("Wrong credentials")
-        exit(1)
-
-*/

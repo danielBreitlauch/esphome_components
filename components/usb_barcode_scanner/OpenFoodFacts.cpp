@@ -47,12 +47,11 @@ namespace usb_barcode_scanner{
     }
 
     OpenFoodFacts::OpenFoodFacts() {
-        this->region = "de";
         this->receive_buffer = new char[HTTP_OUTPUT_BUFFER + 1];
         if (receive_buffer == nullptr) {
             ESP_LOGE(TAG, "Failed to allocate memory for buffer");
             ESP_LOGE(TAG, "Available heap: %" PRIu32, esp_get_free_heap_size());
-            exit(-1);
+            exit(-1); // TODO: remove
         }
     }
 
@@ -116,6 +115,10 @@ namespace usb_barcode_scanner{
 
     void OpenFoodFacts::set_region(std::string region) {
         this->region = region;
+    }
+
+    std::string OpenFoodFacts::get_region() {
+        return this->region;
     }
 }
 }

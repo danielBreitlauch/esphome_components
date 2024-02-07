@@ -15,6 +15,7 @@ public:
     ~OpenFoodFacts();
     optional<ListItem> getListItemFromBarcode(std::string barcode);
     void set_region(std::string region);
+    std::string get_region();
 protected:
     esp_http_client_handle_t initHttpClient();
     void cleanHttpClient(esp_http_client_handle_t client);

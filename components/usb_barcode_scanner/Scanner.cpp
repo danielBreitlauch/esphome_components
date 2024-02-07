@@ -230,12 +230,11 @@ void hid_host_device_callback(hid_host_device_handle_t hid_device_handle, const 
     }
 }
 
-Scanner::Scanner() {
+bool Scanner::setup() {
     BaseType_t task_created = xTaskCreatePinnedToCore(usb_lib_task, "usb_events", 4096, xTaskGetCurrentTaskHandle(), 2, NULL, 0);
     if (task_created != pdTRUE) {
         ESP_LOGE(TAG, "usb events lib task creation failed");
-        exit(-2);
-        return;
+        return false;
     }
 
     // Wait for notification from usb_lib_task to proceed
@@ -253,12 +252,12 @@ Scanner::Scanner() {
     esp_err_t err = hid_host_install(&hid_host_driver_config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "usb hid driver install failed: %s", esp_err_to_name(err));
-        exit(-2);
-        return;
+        return false;
     }
 
     event_queue = xQueueCreate(10, sizeof(event_queue_t));
     line_queue = xQueueCreate(5, sizeof(line_t));
+    return true;
 }
 
 optional<std::string> Scanner::barcode() {

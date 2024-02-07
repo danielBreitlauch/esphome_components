@@ -12,7 +12,8 @@ namespace usb_barcode_scanner {
 class Scanner {
 protected:
 public:
-      Scanner();
+      Scanner() {};
+      bool setup();
       optional<std::string> barcode();
 };
 
