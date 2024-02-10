@@ -3,6 +3,8 @@
 
 #include <string>
 #include "esp_http_client.h"
+#include "esphome/core/automation.h"
+#include "esphome/core/component.h"
 
 namespace esphome {
 namespace usb_barcode_scanner{
@@ -23,15 +25,17 @@ struct ListItem {
     }
 };
 
-class Paprika3List {
+class Paprika3List : public Component {
     const std::string paprikaRestURL = "https://www.paprikaapp.com/api/v2/";
 public:
     Paprika3List();
     ~Paprika3List();
-    void updateListItem(ListItem item);
+    void updateListItem(std::string name);
     void setEmail(std::string email);
     void setPassword(std::string password);
     void setListID(std::string listID);
+    void dump_config() override;
+    float get_setup_priority() const override;
 protected:
     esp_http_client_handle_t initHttpClient();
     void cleanHttpClient(esp_http_client_handle_t client);
@@ -42,8 +46,30 @@ protected:
     char* receive_buffer;
     std::string email;
     std::string password;
-    std::string listID = "8708FA53-B32E-4809-9483-047DC13D4B81-5665-000004B5487830A8";
-    std::string paprikaBearerToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3MDcwNjIzMzgsImVtYWlsIjoicGFwcmlrYUBmbHlpbmctc3RhbXBlLmRlIn0.yvyXfkmJZoF_bSxzJHFvPFIdQ-KTDFuair89tM22Slk"; // TODO: remove
+    std::string listID;
+    std::string paprikaBearerToken = "";
+};
+
+template<typename... Ts> 
+class Paprika3ListAddAction : public Action<Ts...> {
+public:
+    explicit Paprika3ListAddAction(Paprika3List *parent) : parent_(parent) {}
+    
+    void set_format(const std::string &fmt) { this->format_ = fmt; }
+
+    void play(Ts... x) override {
+        this->parent_->updateListItem(format(x...));
+    }
+
+    std::string format(std::string s) {
+        char data[1024];
+        snprintf(data, sizeof(data), this->format_.c_str(), s.c_str());
+        return std::string(data);
+    }
+
+protected:
+    Paprika3List *parent_;
+    std::string format_;
 };
 
 }

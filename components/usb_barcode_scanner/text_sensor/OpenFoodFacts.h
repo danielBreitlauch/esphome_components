@@ -4,8 +4,6 @@
 #include <string>
 #include "esp_http_client.h"
 
-#include "Paprika3List.h"
-
 namespace esphome {
 namespace usb_barcode_scanner{
 
@@ -13,7 +11,7 @@ class OpenFoodFacts {
 public:
     OpenFoodFacts();
     ~OpenFoodFacts();
-    optional<ListItem> getListItemFromBarcode(std::string barcode);
+    optional<std::string> getListItemFromBarcode(std::string barcode);
     void set_region(std::string region);
     std::string get_region();
 protected:

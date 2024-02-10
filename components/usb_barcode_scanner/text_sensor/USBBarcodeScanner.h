@@ -5,7 +5,7 @@
 
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
-#include "esphome/core/entity_base.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/core/helpers.h"
 
 #include "OpenFoodFacts.h"
@@ -14,11 +14,11 @@
 namespace esphome {
 namespace usb_barcode_scanner {
 
-    class USBBarcodeScanner : public Component {
+    class USBBarcodeScanner : public text_sensor::TextSensor, public Component {
     protected:
         esp_err_t init_error_ = ESP_OK;
         OpenFoodFacts openFoodFacts;
-        esphome::usb_barcode_scanner::Scanner scanner;
+        Scanner scanner;
         bool resolveFoodName;
     public:
         USBBarcodeScanner() {};

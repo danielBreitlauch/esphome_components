@@ -82,7 +82,7 @@ namespace usb_barcode_scanner{
         esp_http_client_cleanup(client);
     }
 
-    void Paprika3List::updateListItem(ListItem item) {
+    void Paprika3List::updateListItem(std::string name) {
         if (this->paprikaBearerToken.length() == 0) {
             login();
         }
@@ -92,13 +92,14 @@ namespace usb_barcode_scanner{
             return;
         }
         auto items = *perhapsItems;
+        auto newItem = ListItem(name);
         for (auto &listItem : items) {
-            if (item == listItem) {
+            if (newItem == listItem) {
                 ESP_LOGI(TAG, "found existing item: %s", listItem.name.c_str());
                 return;
             }
         }
-        this->createItem(item);
+        this->createItem(newItem);
     }
 
     void Paprika3List::login() {
@@ -127,6 +128,7 @@ namespace usb_barcode_scanner{
         int status_code = esp_http_client_get_status_code(client);
         if (status_code != HttpStatus_Ok) {
             ESP_LOGE(TAG, "Login failed. HTTP request status code: %d", status_code);
+            this->paprikaBearerToken = "";
             return;
         }
         cleanHttpClient(client);
@@ -274,5 +276,15 @@ namespace usb_barcode_scanner{
     void Paprika3List::setListID(std::string listID) {
         this->listID = listID;
     }
+
+    void Paprika3List::dump_config() {
+        ESP_LOGCONFIG(TAG, "Paprika App List:");
+        ESP_LOGCONFIG(TAG, "  listID: %s", this->listID.c_str());
+    }
+
+    float Paprika3List::get_setup_priority() const {
+        return setup_priority::AFTER_CONNECTION;
+    }
+
 }
 }

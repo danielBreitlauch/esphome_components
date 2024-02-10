@@ -43,12 +43,15 @@ void USBBarcodeScanner::loop() {
         ESP_LOGI(TAG, "Barcode: %s", barcode.c_str());
 
         if (this->resolveFoodName) {
-            optional<ListItem> item = openFoodFacts.getListItemFromBarcode("4047247424301"); // TODO: use barcode
+            optional<std::string> item = openFoodFacts.getListItemFromBarcode("4047247424301"); // TODO: use barcode
             if (item.has_value()) {
-                ESP_LOGI(TAG, "Name: %s", item->name.c_str());
+                ESP_LOGI(TAG, "Name: %s", item->c_str());
+                this->publish_state(*item);
             } else {
                 ESP_LOGE(TAG, "Error retrieving name");
             }
+        } else {
+            this->publish_state(barcode);
         }
     }
 }
