@@ -38,12 +38,6 @@ namespace usb_barcode_scanner{
         }
         if (evt->event_id == HTTP_EVENT_DISCONNECTED) {
             ESP_LOGD(TAG, "DISCONNECT");
-            int mbedtls_err = 0;
-            esp_err_t err = esp_tls_get_and_clear_last_error((esp_tls_error_handle_t)evt->data, &mbedtls_err, NULL);
-            if (err != 0) {
-                ESP_LOGE(TAG, "Last esp error code: 0x%x: %s", err, esp_err_to_name(err));
-                ESP_LOGE(TAG, "Last mbedtls failure: 0x%x", mbedtls_err);
-            }
             bytes_read = 0;
         }
         return ESP_OK;
@@ -68,12 +62,10 @@ namespace usb_barcode_scanner{
         esp_http_client_config_t config = { nullptr };
         #pragma GCC diagnostic pop
         config.method = HTTP_METHOD_POST;
-        config.crt_bundle_attach = esp_crt_bundle_attach;
         config.buffer_size = HTTP_OUTPUT_BUFFER;
         config.user_data = receive_buffer;
         config.event_handler = _http_event_handler2;
         config.timeout_ms=20000;
-        config.keep_alive_enable = true;
         config.url = "https://de.openfoodfacts.org/api/v3/product/";
         return esp_http_client_init(&config);
     }
@@ -161,6 +153,8 @@ namespace usb_barcode_scanner{
         
         cleanHttpClient(client);
         
+        ESP_LOGD(TAG, "Parsing");
+
         auto root = cJSON_Parse(receive_buffer);
         auto results = cJSON_GetObjectItem(root, "result");
         if (!cJSON_IsArray(results)) {

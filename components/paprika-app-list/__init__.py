@@ -7,6 +7,7 @@ from esphome.const import (
     CONF_PASSWORD
 )
 import re
+from esphome.components.esp32 import add_idf_sdkconfig_option
 
 usb_barcode_scanner_ns = cg.esphome_ns.namespace('usb_barcode_scanner')
 Paprika3List = usb_barcode_scanner_ns.class_('Paprika3List', cg.Component)
@@ -15,7 +16,6 @@ Paprika3ListAddAction = usb_barcode_scanner_ns.class_("Paprika3ListAddAction", a
 
 DEPENDENCIES = ["esp32", "network"]
 AUTO_LOAD = ["psram"]
-
 CODEOWNERS = ["@danielBreitlauch"]
 
 CONF_EMAIL = "email"
@@ -36,7 +36,9 @@ async def to_code(config):
     cg.add(var.setPassword(config[CONF_PASSWORD]))
     cg.add(var.setListID(config[CONF_LIST_ID]))
 
-    cg.add_library("HTTPClient", None)
+    add_idf_sdkconfig_option("CONFIG_ESP_TLS_INSECURE", True)
+    add_idf_sdkconfig_option("CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY", True)
+    add_idf_sdkconfig_option("CONFIG_SPIRAM_USE_MALLOC", True)
 
 
 def validate_format(format):

@@ -2,7 +2,6 @@ from esphome.components import text_sensor
 import esphome.config_validation as cv
 import esphome.codegen as cg
 from esphome.const import (
-    CONF_ID,
     CONF_TYPE,
 )
 from esphome.core import CORE, TimePeriod
@@ -13,7 +12,6 @@ usb_barcode_scanner_ns = cg.esphome_ns.namespace('usb_barcode_scanner')
 USBBarcodeScanner = usb_barcode_scanner_ns.class_('USBBarcodeScanner', text_sensor.TextSensor, cg.Component)
 
 DEPENDENCIES = ["esp32", "network"]
-AUTO_LOAD = ["psram"]
 CODEOWNERS = ["@danielBreitlauch"]
 
 CONF_OPEN_FOOD_FACTS_REGION = "openfoodfacts_region"
@@ -35,9 +33,6 @@ async def to_code(config):
 
     cg.add(var.set_resolve_food_name(RESOLV_FOOD_TYPES[config[CONF_TYPE]]))
     cg.add(var.set_food_region(config[CONF_OPEN_FOOD_FACTS_REGION]))
-
-    #paren = await cg.get_variable(config[CONF_SUN_ID])
-    #cg.add(var.set_parent(paren))
 
     assert(CORE.using_esp_idf)
     add_idf_component(
@@ -66,6 +61,7 @@ async def to_code(config):
         "CONFIG_USB_HOST_RESET_RECOVERY_MS": 30,
         "CONFIG_USB_HOST_SET_ADDR_RECOVERY_MS": 10,
 
-        "CONFIG_SPIRAM_USE_MALLOC": True,
+        "CONFIG_ESP_TLS_INSECURE": True,
+        "CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY": True
     }.items():
         add_idf_sdkconfig_option(d, v)
