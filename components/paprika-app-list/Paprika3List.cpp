@@ -13,7 +13,7 @@
 #include "Paprika3List.h"
 
 namespace esphome {
-namespace usb_barcode_scanner{
+namespace paprika_app_list {
 
     static const char *TAG = "Paprika3List";
 
@@ -65,7 +65,7 @@ namespace usb_barcode_scanner{
         config.buffer_size = HTTP_OUTPUT_BUFFER;
         config.user_data = receive_buffer;
         config.event_handler = _http_event_handler2;
-        config.timeout_ms=20000;
+        config.timeout_ms = 10000;
         config.url = "https://de.openfoodfacts.org/api/v3/product/";
         return esp_http_client_init(&config);
     }

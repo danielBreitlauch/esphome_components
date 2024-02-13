@@ -9,7 +9,7 @@
 #include "OpenFoodFacts.h"
 
 namespace esphome {
-namespace usb_barcode_scanner{
+namespace usb_barcode_scanner {
 
     static const char *TAG = "OpenFoodFacts";
 

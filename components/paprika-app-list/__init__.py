@@ -9,9 +9,9 @@ from esphome.const import (
 import re
 from esphome.components.esp32 import add_idf_sdkconfig_option
 
-usb_barcode_scanner_ns = cg.esphome_ns.namespace('usb_barcode_scanner')
-Paprika3List = usb_barcode_scanner_ns.class_('Paprika3List', cg.Component)
-Paprika3ListAddAction = usb_barcode_scanner_ns.class_("Paprika3ListAddAction", automation.Action)
+paprika_app_list_ns = cg.esphome_ns.namespace('paprika_app_list')
+Paprika3List = paprika_app_list_ns.class_('Paprika3List', cg.Component)
+Paprika3ListAddAction = paprika_app_list_ns.class_("Paprika3ListAddAction", automation.Action)
 
 
 DEPENDENCIES = ["esp32", "network"]

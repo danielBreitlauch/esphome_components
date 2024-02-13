@@ -7,7 +7,7 @@
 #include "esphome/core/component.h"
 
 namespace esphome {
-namespace usb_barcode_scanner{
+namespace paprika_app_list{
 
 struct ListItem {
     std::string uid = "";
