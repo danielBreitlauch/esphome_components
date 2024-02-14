@@ -1,4 +1,4 @@
-//#ifdef USE_ESP32 #TODO: remove
+#ifdef USE_ESP32
 
 #include "esphome/core/log.h"
 
@@ -277,4 +277,4 @@ optional<std::string> Scanner::barcode() {
 }  // namespace usb_barcode_scanner
 }  // namespace esphome
 
-//#endif
+#endif

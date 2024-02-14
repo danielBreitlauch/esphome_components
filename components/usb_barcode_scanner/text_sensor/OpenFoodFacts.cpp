@@ -13,7 +13,7 @@ namespace usb_barcode_scanner {
 
     static const char *TAG = "OpenFoodFacts";
 
-    const int HTTP_OUTPUT_BUFFER = 4096;
+    const int HTTP_OUTPUT_BUFFER = 1024;
 
     esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
         App.feed_wdt();
@@ -44,7 +44,6 @@ namespace usb_barcode_scanner {
         if (receive_buffer == nullptr) {
             ESP_LOGE(TAG, "Failed to allocate memory for buffer");
             ESP_LOGE(TAG, "Available heap: %" PRIu32, esp_get_free_heap_size());
-            exit(-1); // TODO: remove
         }
     }
 

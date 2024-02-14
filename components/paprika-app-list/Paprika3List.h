@@ -30,10 +30,10 @@ class Paprika3List : public Component {
 public:
     Paprika3List();
     ~Paprika3List();
-    void updateListItem(std::string name);
-    void setEmail(std::string email);
-    void setPassword(std::string password);
-    void setListID(std::string listID);
+    void updateListItem(const std::string& name);
+    void setEmail(const std::string& email);
+    void setPassword(const std::string& password);
+    void setListID(const std::string& listID);
     void dump_config() override;
     float get_setup_priority() const override;
 protected:
@@ -41,13 +41,13 @@ protected:
     void cleanHttpClient(esp_http_client_handle_t client);
     void login();
     optional<std::vector<ListItem>> list();
-    void createItem(ListItem item);
-    esp_http_client_handle_t client;
+    void createItem(const ListItem& item);
     char* receive_buffer;
     std::string email;
     std::string password;
     std::string listID;
     std::string paprikaBearerToken = "";
+    
 };
 
 template<typename... Ts> 

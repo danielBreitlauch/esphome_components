@@ -1,5 +1,5 @@
 
-//#ifdef USE_ESP32 #TODO: remove
+#ifdef USE_ESP32
 
 #include "esphome/core/log.h"
 
@@ -43,7 +43,7 @@ void USBBarcodeScanner::loop() {
         ESP_LOGI(TAG, "Barcode: %s", barcode.c_str());
 
         if (this->resolveFoodName) {
-            optional<std::string> item = openFoodFacts.getListItemFromBarcode("4047247424301"); // TODO: use barcode
+            optional<std::string> item = openFoodFacts.getListItemFromBarcode(barcode);
             if (item.has_value()) {
                 ESP_LOGI(TAG, "Name: %s", item->c_str());
                 this->publish_state(*item);
@@ -69,4 +69,4 @@ void USBBarcodeScanner::set_resolve_food_name(bool doIt) {
 }  // namespace usb_barcode_scanner
 }  // namespace esphome
 
-//#endif
+#endif
