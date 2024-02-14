@@ -125,13 +125,13 @@ static void hid_host_keyboard_report_callback(const uint8_t *const data, const i
             if (key_code <= HID_KEY_SLASH) {
                 unsigned char key_char = keycode2ascii[key_code][0];
                 if (!!key_char) {
-                    line[size++] = key_char;
                     if (KEYBOARD_ENTER_MAIN_CHAR == key_char) {
-                        line[size++] = '\n';
                         if (line_queue) {
                             xQueueSend(line_queue, line, 0);
                         }
                         size = 0;
+                    } else {
+                        line[size++] = key_char;
                     }
                 }
             }
