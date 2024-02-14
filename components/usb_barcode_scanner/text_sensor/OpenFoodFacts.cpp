@@ -3,8 +3,6 @@
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
 
-#include "esp_crt_bundle.h"
-
 #include "cJSON.h"
 #include "OpenFoodFacts.h"
 
@@ -60,7 +58,8 @@ namespace usb_barcode_scanner {
         config.buffer_size = HTTP_OUTPUT_BUFFER;
         config.user_data = receive_buffer;
         config.event_handler = _http_event_handler;
-        config.timeout_ms=20000;
+        config.timeout_ms=5000;
+        config.is_async = true;
         config.url = "https://de.openfoodfacts.org/api/v3/product/";
         return esp_http_client_init(&config);
     }
@@ -69,24 +68,45 @@ namespace usb_barcode_scanner {
         esp_http_client_cleanup(client);
     }
 
-    optional<std::string> OpenFoodFacts::getListItemFromBarcode(std::string barcode) {
-        auto client = initHttpClient();
-        esp_http_client_set_url(client, ("https://" + this->region + ".openfoodfacts.org/api/v3/product/" + barcode + ".json?fields=product_name,brands,abbreviated_product_name").c_str());
+    optional<std::string> OpenFoodFacts::getListItemFromBarcode(const std::string& barcode) {
+        this->state.data.barcode = barcode;
+        
+        if (this->state.function != NONE) {
+            this->state.function = NONE;
+            this->state.exit = false;
+            ESP_LOGD(TAG, "resume from yield");
+            goto RETURN_SPOT;
+        }
 
-        esp_err_t err = esp_http_client_perform(client);
+        this->client = initHttpClient();
+        esp_http_client_set_url(this->client, ("https://" + this->region + ".openfoodfacts.org/api/v3/product/" + this->state.data.barcode + ".json?fields=product_name,brands,abbreviated_product_name").c_str());
+        
+        esp_err_t err;
+        while(1) {
+            RETURN_SPOT:
+            err = esp_http_client_perform(this->client);
+            if (err != ESP_ERR_HTTP_EAGAIN) {
+                break;
+            }
+            this->state.function = GET_LIST_ITEM_FROM_BARCODE;
+            this->state.exit = true;
+            ESP_LOGD(TAG, "yield");
+            return optional<std::string>();
+        }
+
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
-            cleanHttpClient(client);
-            return getListItemFromBarcode(barcode);
+            cleanHttpClient(this->client);
+            return getListItemFromBarcode(this->state.data.barcode);
         }
-        int status_code = esp_http_client_get_status_code(client);
+        int status_code = esp_http_client_get_status_code(this->client);
         if (status_code != HttpStatus_Ok) {
             ESP_LOGE(TAG, "HTTP request status code: %d", status_code);
-            cleanHttpClient(client);
+            cleanHttpClient(this->client);
             return optional<std::string>();
         }
         
-        cleanHttpClient(client);
+        cleanHttpClient(this->client);
         //ESP_LOGI(TAG, receive_buffer);
 
         auto root = cJSON_Parse(receive_buffer);

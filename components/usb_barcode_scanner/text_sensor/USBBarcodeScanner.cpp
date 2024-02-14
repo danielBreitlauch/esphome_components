@@ -37,13 +37,25 @@ void USBBarcodeScanner::dump_config() {
 }
 
 void USBBarcodeScanner::loop() {
+    if (openFoodFacts.state.function != NONE) {
+        goto RETURN_SPOT;
+    }
+    {
     auto optionalBarcode = scanner.barcode();
     if (optionalBarcode.has_value()) {
-        auto barcode = optionalBarcode.value();
-        ESP_LOGI(TAG, "Barcode: %s", barcode.c_str());
+        this->foundBarcode = optionalBarcode.value();
+        ESP_LOGI(TAG, "Barcode: %s", this->foundBarcode.c_str());
+        return;
+    }
+    }
 
+    if (this->foundBarcode != "") {
         if (this->resolveFoodName) {
-            optional<std::string> item = openFoodFacts.getListItemFromBarcode(barcode);
+            RETURN_SPOT:
+            optional<std::string> item = openFoodFacts.getListItemFromBarcode(this->foundBarcode);
+            if (openFoodFacts.state.exit) {
+                return;
+            }
             if (item.has_value()) {
                 ESP_LOGI(TAG, "Name: %s", item->c_str());
                 this->publish_state(*item);
@@ -51,8 +63,9 @@ void USBBarcodeScanner::loop() {
                 ESP_LOGE(TAG, "Error retrieving name");
             }
         } else {
-            this->publish_state(barcode);
+            this->publish_state(this->foundBarcode);
         }
+        this->foundBarcode = "";
     }
 }
 

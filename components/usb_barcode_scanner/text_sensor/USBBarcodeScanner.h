@@ -20,6 +20,7 @@ namespace usb_barcode_scanner {
         OpenFoodFacts openFoodFacts;
         Scanner scanner;
         bool resolveFoodName;
+        std::string foundBarcode = "";
     public:
         USBBarcodeScanner() {};
         void set_food_region(std::string region);
