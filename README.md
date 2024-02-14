@@ -1,24 +1,25 @@
 
-## ESPHome components for USB camera
+## ESPHome components for USB Keybord/ USB Barcode Scanner and a Paprika2App Component
 
-This repository contains [external components](https://esphome.io/components/external_components.html) for [ESPHome](https://esphome.io/) that enable web camera connected via USB OTG port of ESP32 S2/S3 family of microcontrollers.
+This repository contains [external components](https://esphome.io/components/external_components.html) for [ESPHome](https://esphome.io/)
 
-## Supported video devices
-Not every USB video device can work with ESP devices due to their limited capabilities. E.g. only USB1.1 full-speed mode and MJPEG format are supported along with limitations on max bandwidth and max packet size (as requested by the video device). Please refer to the [documentation](https://docs.espressif.com/projects/esp-iot-solution/en/latest/usb/usb_stream.html#usb-stream-user-guide) for details.
+### USB Barcode Scanner or Keyboard Component
+ This component enables keyboard or barcode scanner connected via USB OTG port of ESP32 S2/S3 family of micro-controllers.
+ Additionally the component can resolve the pure barcode into a food product name.
 
-## Power supply
-ESP32-S3 DevKitC-1 or similar boards do not provide enough power for USB devices. It must be provided externally or via your own schematics.
+### Paprika3App Component
+ This component allows to add items to the Paprika3App grocery list.
 
 ## Memory, PSRAM
-usb_stream requires a lot of video buffers. Current setting is 256K just for transfer buffers. Thus, the ESP32-S2/S3 device has to have PSRAM connected and enabled, e.g.:
+The Paprika3App component requires a lot of memory to gzip requests (Sadly needed by the weird API). Thus, the ESP32-S2/S3 device has to have PSRAM connected and enabled, e.g.:
 ```yaml
 psram:
-  mode: quad
+  mode: octal
   speed: 80MHz
 ```
 
 ## ESP-IDF framework mode
-The webcam component uses `usb_stream` component of [esp-iot-solution](https://github.com/espressif/esp-iot-solution/) library, which is based on ESP-IDF framework. The following yaml enables `esp-idf` mode for ESP32-S3 DevKitC-1 board along with correct flash mode:
+Arduino framework is not supported. And flash mode must be corrected for esp-idf ESP32 S2/S3.
 ```yaml
 esphome:
   platformio_options:
@@ -34,19 +35,39 @@ esp32:
 The following yaml can be used to import components into your ESPHome configuration:
 ```yaml
 external_components:
-  - source: github://anton-malakhov/esphome_webcam
+  - source: github://danielBreitlauch/esphome_components
 ```
 
-## Enable webcam
+## Enable barcode scanner
 ```yaml
-usb_webcam:
-  name: usb-webcam
+text_sensor:
+  - platform: usb_barcode_scanner
+    name: barcode
+    type: food                # optional 'barcode' will show the barcode or 'food' (default) will show the product name
+    openfoodfacts_region: de # optional specify the region for lookup queries to OpenFoodFacts. Default: world
 ```
 
-## Full example YAML
+## Enable Paprika3App
+```yaml
+paprika-app-list:
+  email: "xxx"      # login email of the apps account
+  password: "xxx"   # login password of the apps account
+  listID: "xxx-xxx-xxx-xxxx-xxxxxxx-xxxx-xxxxxxxxxxxxx" # listId of the grocery list lmk if it needs to be simpler to find this
+```
+### Action to add something
+```yaml
+text_sensor:
+  - ...
+    on_value:
+      then:
+        - paprika-app-list.add
+            format: "lala: %s"    # Optional: formats the incoming text
+```
+
+## Full example where the scanned product is put into the grocery list
 ```yaml
 esphome:
-  name: esp-webcam
+  name: barcode
   platformio_options:
     board_build.flash_mode: dio
 
@@ -56,12 +77,21 @@ esp32:
     type: esp-idf
 
 psram:
-  mode: quad
+  mode: octal
   speed: 80MHz
 
 external_components:
-  - source: github://anton-malakhov/esphome_webcam
+  - source: github://danielBreitlauch/esphome_components
 
-usb_webcam:
-  name: usb-webcam
+paprika-app-list:
+  email: "xxx"
+  password: "xxx"
+  listID: "xxx-xxx-xxx-xxxx-xxxxxxx-xxxx-xxxxxxxxxxxxx"
+
+text_sensor:
+  - platform: usb_barcode_scanner
+    name: barcode
+    on_value:
+      then:
+        - paprika-app-list.add
 ```
