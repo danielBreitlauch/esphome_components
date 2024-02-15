@@ -15,7 +15,7 @@ namespace paprika_app_list {
 
     static const char *TAG = "Paprika3List";
 
-    const int HTTP_OUTPUT_BUFFER = 4096;
+    const int HTTP_OUTPUT_BUFFER = 131072;
 
     esp_err_t _http_event_handler2(esp_http_client_event_t *evt) {
         App.feed_wdt();
@@ -136,6 +136,7 @@ namespace paprika_app_list {
         auto results = cJSON_GetObjectItem(root, "result");
         if (!cJSON_IsArray(results)) {
             ESP_LOGE(TAG, "Response is no json: %s", buffer);
+            ESP_LOGE(TAG, "Results is not an array: %s", cJSON_Print(results));
 		    cJSON_Delete(root);
             return optional<std::vector<ListItem>>();
 	    }
