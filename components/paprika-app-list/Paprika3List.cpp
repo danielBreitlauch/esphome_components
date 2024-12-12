@@ -104,7 +104,7 @@ namespace paprika_app_list {
 
         auto client = initHttpClient();
         esp_http_client_set_method(client, HTTP_METHOD_POST);
-        esp_http_client_set_url(client, (this->paprikaRestURL + "account/login/").c_str());
+        esp_http_client_set_url(client, (this->paprikaRestURLv1 + "account/login/").c_str());
         esp_http_client_set_post_field(client, post_data.c_str(), strlen(post_data.c_str()));
         esp_http_client_set_header(client, "Content-Type", ("multipart/form-data; charset=utf-8; boundary=" + BOUNDARY).c_str());
 
@@ -160,7 +160,7 @@ namespace paprika_app_list {
         ESP_LOGD(TAG, "Perform List");
         auto client = initHttpClient();
         esp_http_client_set_method(client, HTTP_METHOD_GET);
-        esp_http_client_set_url(client, (this->paprikaRestURL + "sync/groceries/").c_str());
+        esp_http_client_set_url(client, (this->paprikaRestURLv2 + "sync/groceries/").c_str());
         esp_http_client_set_header(client, "Content-Type", "application/json");
         esp_http_client_set_header(client, "Authorization", ("Bearer " + this->paprikaBearerToken).c_str());
 
@@ -266,7 +266,7 @@ namespace paprika_app_list {
         App.feed_wdt();
         auto client = initHttpClient();
         esp_http_client_set_method(client, HTTP_METHOD_POST);
-        esp_http_client_set_url(client, (this->paprikaRestURL + "sync/groceries").c_str());
+        esp_http_client_set_url(client, (this->paprikaRestURLv2 + "sync/groceries").c_str());
         esp_http_client_set_header(client, "Authorization", ("Bearer " + this->paprikaBearerToken).c_str());
         esp_http_client_set_header(client, "Accept-Encoding", "gzip, deflate");
         esp_http_client_set_header(client, "Accept", "*/*");

@@ -26,7 +26,8 @@ struct ListItem {
 };
 
 class Paprika3List : public Component {
-    const std::string paprikaRestURL = "https://www.paprikaapp.com/api/v2/";
+    const std::string paprikaRestURLv1 = "https://www.paprikaapp.com/api/v1/";
+    const std::string paprikaRestURLv2 = "https://www.paprikaapp.com/api/v2/";
 public:
     Paprika3List();
     ~Paprika3List();
