@@ -6,6 +6,7 @@ from esphome.const import (
 )
 from esphome.core import CORE
 from esphome.components.esp32 import add_idf_sdkconfig_option
+from esphome.components.esp32 import include_builtin_idf_component
 
 usb_barcode_scanner_ns = cg.esphome_ns.namespace('usb_barcode_scanner')
 USBBarcodeScanner = usb_barcode_scanner_ns.class_('USBBarcodeScanner', text_sensor.TextSensor, cg.Component)
@@ -34,6 +35,8 @@ async def to_code(config):
     cg.add(var.set_food_region(config[CONF_OPEN_FOOD_FACTS_REGION]))
 
     assert(CORE.using_esp_idf)
+    include_builtin_idf_component("esp_http_client")
+    include_builtin_idf_component("esp_hid")
     #add_idf_component(
     #    name="usb_host_hid",
     #    repo="https://github.com/espressif/esp-usb.git",
