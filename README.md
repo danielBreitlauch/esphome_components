@@ -29,6 +29,10 @@ esp32:
   board: esp32-s3-devkitc-1
   framework:
     type: esp-idf
+    components:
+      - name: usb_host_hid
+        source: https://github.com/espressif/esp-usb.git
+        path: host/class/hid/usb_host_hid
 ```
 
 ## Import external components
@@ -75,6 +79,10 @@ esp32:
   board: esp32-s3-devkitc-1
   framework:
     type: esp-idf
+    components:
+      - name: usb_host_hid
+        source: https://github.com/espressif/esp-usb.git
+        path: host/class/hid/usb_host_hid
 
 psram:
   mode: octal

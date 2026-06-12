@@ -33,8 +33,7 @@ async def to_code(config):
 
     cg.add(var.set_resolve_food_name(RESOLV_FOOD_TYPES[config[CONF_TYPE]]))
     cg.add(var.set_food_region(config[CONF_OPEN_FOOD_FACTS_REGION]))
-
-    assert(CORE.using_esp_idf)
+    
     include_builtin_idf_component("esp_http_client")
     include_builtin_idf_component("esp_hid")
     #add_idf_component(
