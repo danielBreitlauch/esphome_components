@@ -110,16 +110,47 @@ namespace usb_barcode_scanner {
         //ESP_LOGI(TAG, receive_buffer);
 
         auto root = cJSON_Parse(receive_buffer);
+        if (!root) {
+            ESP_LOGE(TAG, "JSON parse failed");
+            return optional<std::string>();
+        }
         auto result = cJSON_GetObjectItem(root, "result");
-        auto found = cJSON_GetObjectItem(result, "id")->valuestring;
+        if (!cJSON_IsObject(result)) {
+            ESP_LOGE(TAG, "Missing result object");
+            cJSON_Delete(root);
+            return optional<std::string>();
+        }
+        auto id_item = cJSON_GetObjectItem(result, "id");
+        if (!cJSON_IsString(id_item)) {
+            ESP_LOGE(TAG, "Missing result.id");
+            cJSON_Delete(root);
+            return optional<std::string>();
+        }
+        const char *found = id_item->valuestring;
         if (strcmp("product_found", found) != 0) {
             ESP_LOGE(TAG, "Barcode not found: %s", cJSON_Print(root));
+            cJSON_Delete(root);
             return optional<std::string>();
         }
 
         auto product = cJSON_GetObjectItem(root, "product");
+        if (!cJSON_IsObject(product)) {
+            ESP_LOGE(TAG, "Missing product object");
+            cJSON_Delete(root);
+            return optional<std::string>();
+        }
+
+        auto name_item = cJSON_GetObjectItem(product, "product_name");
+        auto brand_item = cJSON_GetObjectItem(product, "brands");
+
+        if (!cJSON_IsString(name_item) || !cJSON_IsString(brand_item)) {
+            cJSON_Delete(root);
+            return optional<std::string>();
+        }
+
         auto name = cJSON_GetObjectItem(product, "product_name")->valuestring;
         auto brands = cJSON_GetObjectItem(product, "brands")->valuestring;
+        cJSON_Delete(root);
         return std::string(name) + " (" + std::string(brands) + ")";
     }
 
