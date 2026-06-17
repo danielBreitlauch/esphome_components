@@ -68,7 +68,7 @@ namespace usb_barcode_scanner {
         return output;
     }
 
-    esp_err_t OpenFoodFacts::http_event_handler(esp_http_client_event_t *evt) {
+    static esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
         App.feed_wdt();
         OpenFoodFacts *self = reinterpret_cast<OpenFoodFacts *>(evt->user_data);
         if (evt->event_id == HTTP_EVENT_ON_CONNECTED || evt->event_id == HTTP_EVENT_ON_FINISH) {
@@ -125,7 +125,7 @@ namespace usb_barcode_scanner {
         config.method = HTTP_METHOD_GET;
         config.buffer_size = HTTP_OUTPUT_BUFFER;
         config.user_data = this;
-        config.event_handler = OpenFoodFacts::http_event_handler;
+        config.event_handler = _http_event_handler;
         config.timeout_ms = 5000;
         config.is_async = true;
         config.url = "https://de.openfoodfacts.org/api/v3/product/";

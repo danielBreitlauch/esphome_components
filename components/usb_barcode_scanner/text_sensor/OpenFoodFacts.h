@@ -30,8 +30,8 @@ public:
     void set_region(std::string region);
     std::string get_region();
     AsyncState state;
+    friend esp_err_t _http_event_handler(esp_http_client_event_t *evt);
 protected:
-    static esp_err_t http_event_handler(esp_http_client_event_t *evt);
     esp_http_client_handle_t client;
     esp_http_client_handle_t initHttpClient();
     void cleanHttpClient(esp_http_client_handle_t client);
