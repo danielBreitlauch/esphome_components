@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstring>
 
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
@@ -13,32 +14,97 @@ namespace usb_barcode_scanner {
 
     const int HTTP_OUTPUT_BUFFER = 1024;
 
+    static std::string sanitize_utf8(const std::string &input) {
+        std::string output;
+        output.reserve(input.size());
+        const unsigned char *data = reinterpret_cast<const unsigned char *>(input.data());
+        size_t i = 0;
+
+        while (i < input.size()) {
+            unsigned char c = data[i];
+            if (c < 0x80) {
+                output.push_back(static_cast<char>(c));
+                i++;
+                continue;
+            }
+
+            size_t expected = 0;
+            if (c >= 0xC2 && c <= 0xDF) {
+                expected = 2;
+            } else if (c >= 0xE0 && c <= 0xEF) {
+                expected = 3;
+            } else if (c >= 0xF0 && c <= 0xF4) {
+                expected = 4;
+            } else {
+                output.push_back('?');
+                i++;
+                continue;
+            }
+
+            if (i + expected > input.size()) {
+                output.push_back('?');
+                i++;
+                continue;
+            }
+
+            bool valid = true;
+            for (size_t j = 1; j < expected; j++) {
+                if ((data[i + j] & 0xC0) != 0x80) {
+                    valid = false;
+                    break;
+                }
+            }
+
+            if (!valid) {
+                output.push_back('?');
+                i++;
+                continue;
+            }
+
+            output.append(reinterpret_cast<const char *>(data + i), expected);
+            i += expected;
+        }
+
+        return output;
+    }
+
     esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
         App.feed_wdt();
-        static int bytes_read = 0;
+        OpenFoodFacts *self = reinterpret_cast<OpenFoodFacts *>(evt->user_data);
         if (evt->event_id == HTTP_EVENT_ON_CONNECTED || evt->event_id == HTTP_EVENT_ON_FINISH) {
-            bytes_read = 0;
+            if (self) {
+                self->bytes_read = 0;
+            }
         }
-        if (evt->event_id == HTTP_EVENT_ON_DATA) {
-            int copy_len = std::min(evt->data_len, (HTTP_OUTPUT_BUFFER - bytes_read));
-            if (copy_len) {
-                memcpy(((char*)evt->user_data) + bytes_read, evt->data, copy_len);
-                ((char*)evt->user_data)[bytes_read + copy_len] = 0;
-                bytes_read += copy_len;
-            } 
+        if (evt->event_id == HTTP_EVENT_ON_DATA && self) {
+            int copy_len = std::min(evt->data_len, (HTTP_OUTPUT_BUFFER - self->bytes_read));
+            if (copy_len > 0) {
+                memcpy(self->receive_buffer + self->bytes_read, evt->data, copy_len);
+                self->bytes_read += copy_len;
+            }
+            if (self->bytes_read <= HTTP_OUTPUT_BUFFER) {
+                self->receive_buffer[self->bytes_read] = 0;
+            }
+            if (copy_len < evt->data_len) {
+                ESP_LOGE(TAG, "HTTP response exceeded buffer size (%d bytes total)", self->bytes_read + (evt->data_len - copy_len));
+            }
         }
         if (evt->event_id == HTTP_EVENT_ERROR) {
             ESP_LOGE(TAG, "HTTP_EVENT_ERROR");
         }
         if (evt->event_id == HTTP_EVENT_DISCONNECTED) {
             ESP_LOGD(TAG, "DISCONNECT");
-            bytes_read = 0;
+            if (self) {
+                self->bytes_read = 0;
+            }
         }
         return ESP_OK;
     }
 
     OpenFoodFacts::OpenFoodFacts() {
         this->receive_buffer = new char[HTTP_OUTPUT_BUFFER + 1];
+        this->bytes_read = 0;
+        this->client = nullptr;
         if (receive_buffer == nullptr) {
             ESP_LOGE(TAG, "Failed to allocate memory for buffer");
             ESP_LOGE(TAG, "Available heap: %" PRIu32, esp_get_free_heap_size());
@@ -47,18 +113,20 @@ namespace usb_barcode_scanner {
 
     OpenFoodFacts::~OpenFoodFacts() {
         delete[] this->receive_buffer;
+        this->receive_buffer = nullptr;
     }
 
     esp_http_client_handle_t OpenFoodFacts::initHttpClient() {
+        memset(this->receive_buffer, 0, HTTP_OUTPUT_BUFFER + 1);
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
         esp_http_client_config_t config = { nullptr };
         #pragma GCC diagnostic pop
         config.method = HTTP_METHOD_GET;
         config.buffer_size = HTTP_OUTPUT_BUFFER;
-        config.user_data = receive_buffer;
+        config.user_data = this;
         config.event_handler = _http_event_handler;
-        config.timeout_ms=5000;
+        config.timeout_ms = 5000;
         config.is_async = true;
         config.url = "https://de.openfoodfacts.org/api/v3/product/";
         return esp_http_client_init(&config);
@@ -107,7 +175,7 @@ namespace usb_barcode_scanner {
         }
         
         cleanHttpClient(this->client);
-        //ESP_LOGI(TAG, receive_buffer);
+        ESP_LOGI(TAG, receive_buffer);
 
         auto root = cJSON_Parse(receive_buffer);
         if (!root) {
@@ -148,10 +216,19 @@ namespace usb_barcode_scanner {
             return optional<std::string>();
         }
 
-        auto name = cJSON_GetObjectItem(product, "product_name")->valuestring;
-        auto brands = cJSON_GetObjectItem(product, "brands")->valuestring;
+        const char *name_ptr = cJSON_GetObjectItem(product, "product_name")->valuestring;
+        const char *brands_ptr = cJSON_GetObjectItem(product, "brands")->valuestring;
+        std::string raw_name = name_ptr ? name_ptr : "";
+        std::string raw_brands = brands_ptr ? brands_ptr : "";
+        std::string safe_name = sanitize_utf8(raw_name);
+        std::string safe_brands = sanitize_utf8(raw_brands);
+        if (safe_name != raw_name || safe_brands != raw_brands) {
+            ESP_LOGW(TAG, "Sanitized invalid UTF-8 in OpenFoodFacts response");
+        }
         cJSON_Delete(root);
-        return std::string(name) + " (" + std::string(brands) + ")";
+
+        ESP_LOGI(TAG, "%s (%s)", safe_name.c_str(), safe_brands.c_str());
+        return safe_name + " (" + safe_brands + ")";
     }
 
     void OpenFoodFacts::set_region(std::string region) {

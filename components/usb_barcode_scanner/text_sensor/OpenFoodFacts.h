@@ -35,6 +35,7 @@ protected:
     esp_http_client_handle_t initHttpClient();
     void cleanHttpClient(esp_http_client_handle_t client);
     char* receive_buffer;
+    int bytes_read = 0;
     std::string region;
 };
 
