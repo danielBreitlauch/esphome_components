@@ -68,7 +68,7 @@ namespace usb_barcode_scanner {
         return output;
     }
 
-    static esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
+    esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
         App.feed_wdt();
         OpenFoodFacts *self = reinterpret_cast<OpenFoodFacts *>(evt->user_data);
         if (evt->event_id == HTTP_EVENT_ON_CONNECTED || evt->event_id == HTTP_EVENT_ON_FINISH) {
