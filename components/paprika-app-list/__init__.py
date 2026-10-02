@@ -8,6 +8,8 @@ from esphome.const import (
 )
 import re
 from esphome.components.esp32 import add_idf_sdkconfig_option
+from esphome.components.esp32 import include_builtin_idf_component
+
 
 paprika_app_list_ns = cg.esphome_ns.namespace('paprika_app_list')
 Paprika3List = paprika_app_list_ns.class_('Paprika3List', cg.Component)
@@ -35,6 +37,9 @@ async def to_code(config):
     cg.add(var.setEmail(config[CONF_EMAIL]))
     cg.add(var.setPassword(config[CONF_PASSWORD]))
     cg.add(var.setListID(config[CONF_LIST_ID]))
+
+    include_builtin_idf_component("esp_http_client")
+    include_builtin_idf_component("json")
 
     add_idf_sdkconfig_option("CONFIG_ESP_TLS_INSECURE", True)
     add_idf_sdkconfig_option("CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY", True)

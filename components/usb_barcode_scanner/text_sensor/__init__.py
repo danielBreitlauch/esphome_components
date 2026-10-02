@@ -36,6 +36,7 @@ async def to_code(config):
     
     include_builtin_idf_component("esp_http_client")
     include_builtin_idf_component("esp_hid")
+    include_builtin_idf_component("json")
     #add_idf_component(
     #    name="usb_host_hid",
     #    repo="https://github.com/espressif/esp-usb.git",
